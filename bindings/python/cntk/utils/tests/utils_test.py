@@ -5,6 +5,8 @@
 # ==============================================================================
 
 import numpy
+import scipy.sparse as sparse
+csr = sparse.csr_matrix
 import pytest
 
 from cntk.device import default
@@ -118,7 +120,6 @@ def test_is_one_hot(shape, batch, expected):
 
 @pytest.mark.parametrize("shape, batch, expected", [
     ((1,), [AA([[30.]]), AA([[40], [50]])], True),
-
     (1, [[1,2]], True),
     (1, [1,2], False),
     ((1,2), AA([[[1,1]],[[2,2]]]), False),
@@ -128,18 +129,55 @@ def test_is_one_hot(shape, batch, expected):
     ((2,2), AA([[[[1,1],[2,2]]]]), True),
     ((1,), [[[30.]], [[40], [50]]], True),
     ((1,), [AA([[30.]]), AA([[40], [50]])], True),
-    # one-hot
-    (10, [[1,5],[2],[3]], True),
-    (10, [1,2,3], False),
-    # exception handling
-    ((2,2), AA([[1,1],[2,2]]), ValueError),
-    (1, [[[1,2]]], ValueError),
+
+    # # one-hot
+    # (10, [[1,5],[2],[3]], True),
+    # (10, [1,2,3], False),
+
+    # # exception handling
+    # ((2,2), AA([[1,1],[2,2]]), ValueError),
+    # (1, [[[1,2]]], ValueError),
 ])
-def test_has_seq_dim(shape, batch, expected):
+def test_has_seq_dim_dense(shape, batch, expected):
     i1 = input_variable(shape)
     if expected in [False, True]:
         assert has_seq_dim(i1, batch) == expected
     else:
         with pytest.raises(expected):
             has_seq_dim(i1, batch)
-    
+
+@pytest.mark.parametrize("shape, batch, expected", [
+    ((2,), [[csr([1,0]), csr([2,3])], [csr([5,6])]], True),
+    ((2,), [csr([1,0]), csr([2,3]), csr([5,6])], False)
+])
+def test_has_seq_dim_sparse(shape, batch, expected):
+    i1 = input_variable(shape, is_sparse=True)
+    if expected in [False, True]:
+        assert has_seq_dim(i1, batch) == expected
+    else:
+        with pytest.raises(expected):
+            has_seq_dim(i1, batch)
+
+def test_pad_sparse_seq_to_max_len():
+    batch = [
+            [csr([1,0]), csr([2,3])],
+            [csr([5,6])]]
+    batch = pad_sparse_seq_to_max_len(batch, 2)
+    assert np.allclose(batch[0].todense(), [1,0, 2,3])
+    assert np.allclose(batch[1].todense(), [5,6, 0,0])
+    assert batch[0].shape == (1,4)
+    assert batch[1].shape == (1,4)
+
+def test_sanitize_batch_sparse():
+    var = input_variable((2,), is_sparse=True)
+
+    batch = [
+            [csr([1,0]), csr([2,3])],
+            [csr([5,6])]]
+    b = sanitize_batch(var, batch)
+    np.allclose(np.asarray(b), 
+            [
+                [1,0,2,3],
+                [5,6,0,0]])
+
+
